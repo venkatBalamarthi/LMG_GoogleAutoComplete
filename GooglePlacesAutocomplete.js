@@ -17,6 +17,7 @@ import {
   TouchableHighlight,
   View,
 } from 'react-native';
+import { compose } from 'redux';
 
 const WINDOW = Dimensions.get('window');
 
@@ -533,6 +534,26 @@ export default class GooglePlacesAutocomplete extends Component {
     }
   };
 
+  _getPlacesDetailsByPlaceId = async (placeId = '') => {
+    if (!placeId) {
+      return;
+    }
+    const url = `${this.state.url}/place/details/json?` +
+      Qs.stringify({
+        key: this.props.query.key,
+        placeid: placeId,
+        language: this.props.query.language,
+        ...this.props.GooglePlacesDetailsQuery,
+      })
+    try {
+      const result = await (await fetch(url)).json();
+      const sameCountryList = result?.result?.address_components?.some((add, index) => `${add?.short_name}`?.toLowerCase() === this.props.countryCode);
+      return sameCountryList ? placeId : undefined;
+    }
+    catch (err) {
+      console.error(err)
+    }
+  }
   _request = (text) => {
     this._abortRequests();
     if (
@@ -544,7 +565,7 @@ export default class GooglePlacesAutocomplete extends Component {
       this._requests.push(request);
       request.timeout = this.props.timeout;
       request.ontimeout = this.props.onTimeout;
-      request.onreadystatechange = () => {
+      request.onreadystatechange = async () => {
         if (request.readyState !== 4) {
           return;
         }
@@ -583,12 +604,15 @@ export default class GooglePlacesAutocomplete extends Component {
       if (this.props.preProcess) {
         text = this.props.preProcess(text);
       }
+      const url = `${this.state.url}/place/autocomplete/json?&input=` +
+        encodeURIComponent(text) +
+        '&' +
+        Qs.stringify(this.props.query);
+      
+      const customUrl = `${this.state.url}/place/autocomplete/json?&input=${text}&key=${this.props.query.key}&language=${this.props.language}&components=country:${this.props.countryCode}&types=`
       request.open(
         'GET',
-        `${this.state.url}/place/queryautocomplete/json?&input=` +
-          encodeURIComponent(text) +
-          '&' +
-          Qs.stringify(this.props.query),
+        customUrl,
       );
 
       request.withCredentials = this.requestShouldUseWithCredentials();
@@ -1005,3 +1029,5 @@ const create = function create(options = {}) {
 };
 
 export { GooglePlacesAutocomplete, create };
+
+
