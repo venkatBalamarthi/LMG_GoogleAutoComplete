@@ -286,7 +286,7 @@ export default class GooglePlacesAutocomplete extends Component {
 
       // display loader
       this._enableRowLoader(rowData);
-      if (this.props.isMiratedPlacesAPI) {
+      if (this.props.isMiratedPlacesAPI || this.props.isMigratedPlacesAPI) {
         this._getPlaceDetails(rowData);
         return;
       }
@@ -683,7 +683,7 @@ export default class GooglePlacesAutocomplete extends Component {
   }
   _request = (text) => {
     this._abortRequests();
-    if (this.props?.isMiratedPlacesAPI) {
+    if (this.props?.isMiratedPlacesAPI || this.props.isMigratedPlacesAPI) {
       this._getAutoComplete(text);
       return;
     }
@@ -1099,6 +1099,7 @@ GooglePlacesAutocomplete.propTypes = {
     useOnPlatform: PropTypes.oneOf(['web', 'all']),
   }),
   isMiratedPlacesAPI: PropTypes.bool,
+  isMigratedPlacesAPI: PropTypes.bool,
   migratedAPIKey: PropTypes.string,
   locationBias: PropTypes.object
 };
@@ -1150,6 +1151,7 @@ GooglePlacesAutocomplete.defaultProps = {
   onSubmitEditing: () => {},
   editable: true,
   isMiratedPlacesAPI: false,
+  isMigratedPlacesAPI: false,
   migratedAPIKey: '',
   locationBias: {
     rectangle: {
