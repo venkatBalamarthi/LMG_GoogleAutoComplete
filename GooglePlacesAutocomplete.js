@@ -1,3 +1,4 @@
+import Axios from 'axios';
 import debounce from 'lodash.debounce';
 import PropTypes from 'prop-types';
 import Qs from 'qs';
@@ -285,6 +286,10 @@ export default class GooglePlacesAutocomplete extends Component {
 
       // display loader
       this._enableRowLoader(rowData);
+      if (this.props.isMiratedPlacesAPI) {
+        this._getPlaceDetails(rowData);
+        return;
+      }
 
       // fetch details
       const request = new XMLHttpRequest();
@@ -296,7 +301,6 @@ export default class GooglePlacesAutocomplete extends Component {
 
         if (request.status === 200) {
           const responseJSON = JSON.parse(request.responseText);
-
           if (responseJSON.status === 'OK') {
             if (this._isMounted === true) {
               const details = responseJSON.result;
@@ -353,9 +357,7 @@ export default class GooglePlacesAutocomplete extends Component {
             ...this.props.GooglePlacesDetailsQuery,
           }),
       );
-
       request.withCredentials = this.requestShouldUseWithCredentials();
-
       request.send();
     } else if (rowData.isCurrentLocation === true) {
       // display loader
@@ -378,6 +380,131 @@ export default class GooglePlacesAutocomplete extends Component {
 
       // sending predefinedPlace as details for predefined places
       this.props.onPress(predefinedPlace, predefinedPlace);
+    }
+  };
+
+
+
+  _getPlaceDetails = async (rowData = {}) => {
+    if (!rowData && !rowData?.place_id) {
+      return;
+    }
+    const API_KEY = this.props.migratedAPIKey;
+
+    try {
+      const response = await Axios.get(
+        `https://places.googleapis.com/v1/places/${rowData.place_id}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': API_KEY,
+            'X-Goog-FieldMask': '*'
+          }
+        }
+      );
+      if (response.status === 200) {
+        if (this._isMounted) {
+          const details = response.data;
+          const updatedDetails = { ...details};
+          updatedDetails.geometry = {
+            location: {
+              lat: details?.location?.latitude,
+              lng: details?.location?.longitude,
+            }
+          }
+          this._disableRowLoaders();
+          this._onBlur();
+
+          this.setState({
+            text: this._renderDescription(rowData),
+          });
+
+          delete rowData.isLoading;
+          this.props.onPress(rowData, updatedDetails);
+        }
+      } else {
+        this._disableRowLoaders();
+        if (this.props.autoFillOnNotFound) {
+          this.setState({
+            text: this._renderDescription(rowData),
+          });
+          delete rowData.isLoading;
+        }
+
+        if (!this.props.onNotFound) {
+          console.warn(`Google Places Autocomplete: ${response.status}`);
+        } else {
+          this.props.onNotFound(response);
+        }
+      }
+    } catch (error) {
+      this._disableRowLoaders();
+
+      if (!this.props.onFail) {
+        console.warn(
+          'google places autocomplete: request could not be completed or has been aborted',
+        );
+      } else {
+        this.props.onFail(
+          'request could not be completed or has been aborted',
+        );
+      }
+    }
+  };
+
+  _getAutoComplete = async (text) => {
+    if (!text?.trim()) {
+      return;
+    }
+    const locationBias = this.props.locationBias || {};
+    const requestBody = {
+      input: text,
+      includedRegionCodes: ["AE"],  // Restrict results to UAE
+      includedPrimaryTypes: [
+        "locality", 
+        "sublocality", 
+        "point_of_interest", 
+        "geocode", 
+        "establishment"
+      ],
+      ...locationBias
+    };
+    try {
+      const results = await Axios.post(
+        "https://places.googleapis.com/v1/places:autocomplete", 
+        requestBody, 
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": this.props.migratedAPIKey,
+            "X-Goog-FieldMask": "*"
+          }
+        }
+      )
+      const formattedResults = [];
+      results?.data?.suggestions?.forEach((res) => {
+        const placePrediction = res?.placePrediction;
+        const placedObject = {
+          description: placePrediction?.text?.text,
+          place_id: placePrediction?.placeId,
+          types: placePrediction?.types,
+          reference: placePrediction?.placeId,
+          structured_formatting: {
+            main_text: placePrediction?.structuredFormat?.mainText?.text,
+            secondary_text: placePrediction?.structuredFormat?.secondaryText?.text
+          }
+        }
+        formattedResults.push(placedObject)
+      });
+      if (formattedResults?.length) {
+        this._results = formattedResults;
+        this.setState({
+          dataSource: this.buildRowsFromResults(formattedResults),
+        });
+      }
+    } catch (error) {
+      
+      console.error("Error searching places:", error?.response?.data || error?.message);
     }
   };
 
@@ -556,6 +683,10 @@ export default class GooglePlacesAutocomplete extends Component {
   }
   _request = (text) => {
     this._abortRequests();
+    if (this.props?.isMiratedPlacesAPI) {
+      this._getAutoComplete(text);
+      return;
+    }
     if (
       this.supportedPlatform() &&
       text &&
@@ -967,6 +1098,9 @@ GooglePlacesAutocomplete.propTypes = {
     url: PropTypes.string,
     useOnPlatform: PropTypes.oneOf(['web', 'all']),
   }),
+  isMiratedPlacesAPI: PropTypes.bool,
+  migratedAPIKey: PropTypes.string,
+  locationBias: PropTypes.object
 };
 GooglePlacesAutocomplete.defaultProps = {
   placeholder: 'Search',
@@ -1015,6 +1149,14 @@ GooglePlacesAutocomplete.defaultProps = {
   numberOfLines: 1,
   onSubmitEditing: () => {},
   editable: true,
+  isMiratedPlacesAPI: false,
+  migratedAPIKey: '',
+  locationBias: {
+    rectangle: {
+      low: { latitude: 26.5, longitude: 51.6 },
+      high: { latitude: 26.5, longitude: 56.4 },
+    },
+  },
 };
 
 // this function is still present in the library to be retrocompatible with version < 1.1.0
@@ -1029,5 +1171,3 @@ const create = function create(options = {}) {
 };
 
 export { GooglePlacesAutocomplete, create };
-
-
