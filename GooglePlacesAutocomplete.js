@@ -457,9 +457,10 @@ export default class GooglePlacesAutocomplete extends Component {
       return;
     }
     const locationBias = this.props.locationBias || {};
+    const includedRegionCodes = this.props.countryCode || 'AE'
     const requestBody = {
       input: text,
-      includedRegionCodes: ["AE"],  // Restrict results to UAE
+      includedRegionCodes: [includedRegionCodes],  // Restrict results to UAE
       includedPrimaryTypes: [
         "locality", 
         "sublocality", 
